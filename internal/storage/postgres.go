@@ -10,6 +10,10 @@ type PostgresStore struct {
 	db *sql.DB
 }
 
+func (s *PostgresStore) DB() *sql.DB {
+	return s.db
+}
+
 func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
