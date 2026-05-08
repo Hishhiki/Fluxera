@@ -1,0 +1,43 @@
+# Go
+bin/
+dist/
+build/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Docker/local infrastructure data
+docker-data/
+.docker-data/
+data/
+postgres-data/
+redis-data/
+kafka-data/
+
+# Logs
+*.log
+logs/
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
