@@ -11,6 +11,7 @@ import (
 type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
+	JWTSecret   string
 }
 
 func Load() Config {
@@ -26,6 +27,7 @@ func Load() Config {
 	return Config{
 		HTTPAddr:    addr,
 		DatabaseURL: os.Getenv("DATABASE_URL"),
+		JWTSecret:   os.Getenv("JWT_SECRET"),
 	}
 
 }
