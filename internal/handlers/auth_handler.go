@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fluxera/internal/service"
 	"net/http"
 )
@@ -33,6 +34,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	newUser, err := h.auth.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
+		if errors.Is(err, service.ErrEmailAlreadyExists) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

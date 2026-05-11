@@ -9,8 +9,11 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrEmailAlreadyExists = errors.New("email already exists")
 
 type AuthService struct {
 	users     *repositories.UserRepository
@@ -55,6 +58,10 @@ func (s *AuthService) Register(ctx context.Context, email, password string) (*mo
 	}
 	createdUser, err := s.users.CreateUser(ctx, user)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrEmailAlreadyExists
+		}
 		return nil, err
 	}
 	return createdUser, nil
