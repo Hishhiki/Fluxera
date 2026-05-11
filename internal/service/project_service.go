@@ -35,3 +35,15 @@ func (s *ProjectService) Create(ctx context.Context, ownerID int64, name, descri
 	return createdProject, nil
 
 }
+
+func (s *ProjectService) GetAll(ctx context.Context, ownerID int64) ([]*models.Project, error) {
+	return s.projects.GetProjects(ctx, ownerID)
+}
+
+func (s *ProjectService) GetByID(ctx context.Context, id, ownerID int64) (*models.Project, error) {
+	return s.projects.GetProjectByID(ctx, id, ownerID)
+}
+
+func (s *ProjectService) Delete(ctx context.Context, id, ownerID int64) error {
+	return s.projects.DeleteProject(ctx, id, ownerID)
+}

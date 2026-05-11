@@ -5,6 +5,9 @@ import (
 	"fluxera/internal/middleware"
 	"fluxera/internal/service"
 	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ProjectHandler struct {
@@ -40,4 +43,63 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, newProject)
+}
+
+func (h *ProjectHandler) GetProjects(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	projects, err := h.project.GetAll(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get projects")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, projects)
+}
+
+func (h *ProjectHandler) GetProjectByID(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	project, err := h.project.GetByID(r.Context(), id, userID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	if err := h.project.Delete(r.Context(), id, userID); err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
