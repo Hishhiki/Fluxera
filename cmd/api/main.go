@@ -39,6 +39,10 @@ func main() {
 	userService := service.NewUserService(userRepo)
 	userHandler := handlers.NewUserHandler(userService)
 
+	projectRepo := repositories.NewProjectRepository(store.DB())
+	projectService := service.NewProjectService(projectRepo)
+	projectHandler := handlers.NewProjectHandler(projectService)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
@@ -66,6 +70,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWTSecret))
 		r.Get("/me", userHandler.Me)
+		r.Post("/projects", projectHandler.CreateProject)
 	})
 	log.Printf("server started on %s", cfg.HTTPAddr)
 	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, r))
