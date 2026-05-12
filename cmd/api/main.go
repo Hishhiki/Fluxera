@@ -43,6 +43,10 @@ func main() {
 	projectService := service.NewProjectService(projectRepo)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
+	taskRepo := repositories.NewTaskRepository(store.DB())
+	taskService := service.NewTaskService(taskRepo, projectRepo)
+	taskHandler := handlers.NewTaskHandler(taskService)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
@@ -74,6 +78,11 @@ func main() {
 		r.Get("/projects", projectHandler.GetProjects)
 		r.Get("/projects/{id}", projectHandler.GetProjectByID)
 		r.Delete("/projects/{id}", projectHandler.DeleteProject)
+		r.Get("/projects/{projectID}/tasks", taskHandler.GetTasksByProject)
+		r.Post("/projects/{projectID}/tasks", taskHandler.CreateTask)
+		r.Put("/tasks/{id}", taskHandler.UpdateTask)
+		r.Patch("/tasks/{id}/status", taskHandler.UpdateTaskStatus)
+		r.Delete("/tasks/{id}", taskHandler.DeleteTask)
 	})
 	log.Printf("server started on %s", cfg.HTTPAddr)
 	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, r))
