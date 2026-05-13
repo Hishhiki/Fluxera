@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
@@ -12,12 +13,14 @@ type CommentService struct {
 	comments *repositories.CommentRepository
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
+	activity ActivityLogger
 }
 
-func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository) *CommentService {
+func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, activity ActivityLogger) *CommentService {
 	return &CommentService{comments: comments,
 		tasks:    tasks,
-		projects: projects}
+		projects: projects,
+		activity: activity}
 }
 
 func (s *CommentService) Create(ctx context.Context, taskID, userID int64, content string) (*models.Comment, error) {
@@ -38,10 +41,24 @@ func (s *CommentService) Create(ctx context.Context, taskID, userID int64, conte
 		UserID:  userID,
 		Content: content,
 	}
+
 	createdComment, err := s.comments.CreateComment(ctx, comment)
 	if err != nil {
 		return nil, err
 	}
+
+	payload, err := json.Marshal(map[string]any{
+		"comment_id": createdComment.ID,
+		"task_id":    createdComment.TaskID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.activity.Create(ctx, task.ProjectID, userID, "comment.created", payload)
+	if err != nil {
+		return nil, err
+	}
+
 	return createdComment, nil
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
@@ -11,10 +12,23 @@ import (
 type TaskService struct {
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
+	activity ActivityLogger
 }
 type TaskFilter struct {
 	Status string
 	Sort   string
+}
+
+type ActivityLogger interface {
+	Create(ctx context.Context, projectID, userID int64, eventType string, payload json.RawMessage) (*models.ActivityLog, error)
+}
+
+func NewTaskService(tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, activity ActivityLogger) *TaskService {
+	return &TaskService{
+		tasks:    tasks,
+		projects: projects,
+		activity: activity,
+	}
 }
 
 func isValidTaskStatus(status string) bool {
@@ -56,13 +70,6 @@ func (s *TaskService) getTaskForOwner(ctx context.Context, ownerID, taskID int64
 	return task, nil
 }
 
-func NewTaskService(tasks *repositories.TaskRepository, projects *repositories.ProjectRepository) *TaskService {
-	return &TaskService{
-		tasks:    tasks,
-		projects: projects,
-	}
-}
-
 func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, title, description, status, priority string) (*models.Task, error) {
 	_, err := s.projects.GetProjectByID(ctx, projectID, ownerID)
 	if err != nil {
@@ -73,6 +80,7 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 	if title == "" {
 		return nil, errors.New("task title is required")
 	}
+
 	description = strings.TrimSpace(description)
 
 	status = strings.TrimSpace(status)
@@ -88,6 +96,7 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 	if priority == "" {
 		priority = models.TaskPriorityNone
 	}
+
 	if !isValidTaskPriority(priority) {
 		return nil, errors.New("invalid task priority")
 	}
@@ -100,8 +109,25 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 		Priority:    priority,
 	}
 
-	return s.tasks.CreateTask(ctx, task)
+	createdTask, err := s.tasks.CreateTask(ctx, task)
+	if err != nil {
+		return nil, err
+	}
 
+	payload, err := json.Marshal(map[string]any{
+		"task_id": createdTask.ID,
+		"title":   createdTask.Title,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.activity.Create(ctx, projectID, ownerID, "task.created", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return createdTask, nil
 }
 
 func (s *TaskService) GetByProject(ctx context.Context, ownerID, projectID int64, filter TaskFilter) ([]*models.Task, error) {
@@ -128,7 +154,7 @@ func (s *TaskService) GetByProject(ctx context.Context, ownerID, projectID int64
 }
 
 func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, status string) (*models.Task, error) {
-	_, err := s.getTaskForOwner(ctx, ownerID, taskID)
+	existingTask, err := s.getTaskForOwner(ctx, ownerID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +162,27 @@ func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, s
 	if !isValidTaskStatus(status) {
 		return nil, errors.New("invalid task status")
 	}
-	return s.tasks.UpdateTaskStatus(ctx, taskID, status)
+
+	updatedTask, err := s.tasks.UpdateTaskStatus(ctx, taskID, status)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"task_id":    updatedTask.ID,
+		"old_status": existingTask.Status,
+		"new_status": updatedTask.Status,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.activity.Create(ctx, existingTask.ProjectID, ownerID, "task.status_changed", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedTask, nil
 
 }
 

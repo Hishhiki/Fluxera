@@ -43,17 +43,17 @@ func main() {
 	projectService := service.NewProjectService(projectRepo)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
-	taskRepo := repositories.NewTaskRepository(store.DB())
-	taskService := service.NewTaskService(taskRepo, projectRepo)
-	taskHandler := handlers.NewTaskHandler(taskService)
-
-	commentRepo := repositories.NewCommentRepository(store.DB())
-	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo)
-	commentHandler := handlers.NewCommentHandler(commentService)
-
 	activityRepo := repositories.NewActivityLogRepository(store.DB())
 	activityService := service.NewActivityLogService(activityRepo, projectRepo)
 	activityHandler := handlers.NewActivityLogHandler(activityService)
+
+	taskRepo := repositories.NewTaskRepository(store.DB())
+	taskService := service.NewTaskService(taskRepo, projectRepo, activityService)
+	taskHandler := handlers.NewTaskHandler(taskService)
+
+	commentRepo := repositories.NewCommentRepository(store.DB())
+	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo, activityService)
+	commentHandler := handlers.NewCommentHandler(commentService)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
