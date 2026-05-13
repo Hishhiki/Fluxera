@@ -12,6 +12,10 @@ type TaskService struct {
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
 }
+type TaskFilter struct {
+	Status string
+	Sort   string
+}
 
 func isValidTaskStatus(status string) bool {
 	switch status {
@@ -25,6 +29,15 @@ func isValidTaskStatus(status string) bool {
 func isValidTaskPriority(priority string) bool {
 	switch priority {
 	case models.TaskPriorityNone, models.TaskPriorityLow, models.TaskPriorityMedium, models.TaskPriorityHigh:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidTaskSort(sort string) bool {
+	switch sort {
+	case "created_at_desc", "created_at_asc", "updated_at_desc", "updated_at_asc":
 		return true
 	default:
 		return false
@@ -91,13 +104,27 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 
 }
 
-func (s *TaskService) GetByProject(ctx context.Context, ownerID, projectID int64) ([]*models.Task, error) {
+func (s *TaskService) GetByProject(ctx context.Context, ownerID, projectID int64, filter TaskFilter) ([]*models.Task, error) {
 	_, err := s.projects.GetProjectByID(ctx, projectID, ownerID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.tasks.GetTasksByProjectID(ctx, projectID)
+	filter.Status = strings.TrimSpace(filter.Status)
+	if filter.Status != "" && !isValidTaskStatus(filter.Status) {
+		return nil, errors.New("invalid task status")
+	}
+
+	filter.Sort = strings.TrimSpace(filter.Sort)
+
+	if filter.Sort == "" {
+		filter.Sort = "created_at_desc"
+	}
+	if !isValidTaskSort(filter.Sort) {
+		return nil, errors.New("invalid task sort")
+	}
+
+	return s.tasks.GetTasksByProjectID(ctx, projectID, filter.Status, filter.Sort)
 }
 
 func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, status string) (*models.Task, error) {

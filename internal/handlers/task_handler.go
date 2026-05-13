@@ -63,6 +63,10 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TaskHandler) GetTasksByProject(w http.ResponseWriter, r *http.Request) {
+	filter := service.TaskFilter{
+		Status: r.URL.Query().Get("status"),
+		Sort:   r.URL.Query().Get("sort"),
+	}
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -75,7 +79,7 @@ func (h *TaskHandler) GetTasksByProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tasks, err := h.tasks.GetByProject(r.Context(), userID, projectID)
+	tasks, err := h.tasks.GetByProject(r.Context(), userID, projectID, filter)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "project not found")
 		return

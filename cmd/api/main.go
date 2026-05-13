@@ -51,6 +51,10 @@ func main() {
 	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo)
 	commentHandler := handlers.NewCommentHandler(commentService)
 
+	activityRepo := repositories.NewActivityLogRepository(store.DB())
+	activityService := service.NewActivityLogService(activityRepo, projectRepo)
+	activityHandler := handlers.NewActivityLogHandler(activityService)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
@@ -91,6 +95,7 @@ func main() {
 		r.Get("/tasks/{id}/comments", commentHandler.GetCommentsByTask)
 		r.Put("/comments/{id}", commentHandler.UpdateComment)
 		r.Delete("/comments/{id}", commentHandler.DeleteComment)
+		r.Get("/projects/{id}/activity", activityHandler.GetProjectActivity)
 	})
 	log.Printf("server started on %s", cfg.HTTPAddr)
 	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, r))

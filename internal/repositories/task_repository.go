@@ -15,6 +15,19 @@ func NewTaskRepository(db *sql.DB) *TaskRepository {
 	return &TaskRepository{db: db}
 }
 
+func taskOrderBy(sort string) string {
+	switch sort {
+	case "created_at_asc":
+		return "created_at ASC"
+	case "updated_at_desc":
+		return "updated_at DESC"
+	case "updated_at_asc":
+		return "updated_at ASC"
+	default:
+		return "created_at DESC"
+	}
+}
+
 func (r *TaskRepository) CreateTask(ctx context.Context, task *models.Task) (*models.Task, error) {
 	row := r.db.QueryRowContext(ctx, `INSERT INTO tasks (project_id, title, description, status, priority)
 	VALUES ($1, $2, $3, $4, $5)
@@ -58,13 +71,24 @@ func (r *TaskRepository) GetTaskByID(ctx context.Context, id int64) (*models.Tas
 	return task, nil
 }
 
-func (r *TaskRepository) GetTasksByProjectID(ctx context.Context, projectID int64) ([]*models.Task, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, project_id, title, description, status, priority, created_at, updated_at
-		 FROM tasks
-		 WHERE project_id = $1`,
-		projectID,
-	)
+func (r *TaskRepository) GetTasksByProjectID(ctx context.Context, projectID int64, status, sort string) ([]*models.Task, error) {
+
+	orderBy := taskOrderBy(sort)
+
+	query := `SELECT id, project_id, title, description, status, priority, created_at, updated_at
+		FROM tasks
+		WHERE project_id = $1`
+
+	args := []any{projectID}
+
+	if status != "" {
+		query += " AND status = $2"
+		args = append(args, status)
+	}
+
+	query += " ORDER BY " + orderBy
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
