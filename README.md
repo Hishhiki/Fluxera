@@ -1,20 +1,20 @@
 # Fluxera
 
-Fluxera is a lightweight project management system for teams that need a clear place to organize projects, track work, and follow activity across their workspace.
+Fluxera is a project management backend for organizing projects, tasks, comments, and project activity in one workspace.
 
-It provides a backend foundation for creating projects, managing task workflows, attaching discussions to work items, and building an activity feed around everything that happens in a project.
+It provides a focused API for teams and products that need user authentication, owner-scoped projects, task workflows, task discussions, and an activity feed that tracks important changes across a project.
 
 ## Overview
 
-Fluxera helps users manage work through a simple structure:
+Fluxera is built around a simple workflow:
 
-- users create accounts and sign in securely;
-- authenticated users create and manage projects;
+- users register and sign in;
+- authenticated users create projects;
 - projects contain tasks with statuses and priorities;
-- tasks can have comments and activity history;
-- project activity can be processed asynchronously through events.
+- tasks support comments;
+- important project events are recorded in an activity feed.
 
-The backend is designed around clear boundaries between HTTP handlers, business services, repositories, storage, middleware, and infrastructure integrations.
+The backend keeps a clear separation between request handling, business logic, database access, authentication, and infrastructure setup.
 
 ## Features
 
@@ -24,26 +24,42 @@ The backend is designed around clear boundaries between HTTP handlers, business 
 - User login
 - Password hashing with bcrypt
 - JWT-based authentication
-- Protected API routes
+- Protected routes
 - Current user endpoint
 
 ### Projects
 
 - Create projects
 - List projects owned by the current user
-- Get a project by id
+- Get project details
 - Delete projects
 - Owner-based access checks
 
-### Planned Capabilities
+### Tasks
 
-- Task management
-- Task status updates
-- Comments
-- Activity feed
-- Kafka-driven event processing
-- Redis caching
-- Worker pools for asynchronous jobs
+- Create tasks inside projects
+- List project tasks
+- Filter tasks by status
+- Sort tasks by creation or update time
+- Update task details
+- Change task status
+- Delete tasks
+
+### Comments
+
+- Add comments to tasks
+- List task comments
+- Update own comments
+- Delete own comments
+- Project owners can remove comments in their projects
+
+### Activity Feed
+
+- Store project activity events
+- Track task creation
+- Track task status changes
+- Track comment creation
+- Read project activity feed
 
 ## Tech Stack
 
@@ -55,7 +71,7 @@ The backend is designed around clear boundaries between HTTP handlers, business 
 - Docker
 - docker-compose
 
-Planned infrastructure:
+Planned infrastructure additions:
 
 - Kafka
 - Redis
@@ -70,13 +86,14 @@ HTTP request
   -> handler
   -> service
   -> repository
-  -> storage
   -> PostgreSQL
 ```
 
-Authentication uses JWT middleware to protect private routes. The middleware validates the token, extracts the current user id, and passes it through the request context to downstream handlers.
+Handlers decode requests and write responses. Services contain business rules, validation, access checks, and activity logging. Repositories isolate SQL and database access.
 
-Project access is scoped by owner id, so users can only read and mutate their own project resources.
+Authentication is handled through JWT middleware. Protected handlers receive the current user id from the request context.
+
+Project access is owner-scoped. Tasks, comments, and activity feed access are checked through the project that owns the resource.
 
 ## Project Structure
 
@@ -97,6 +114,7 @@ fluxera/
     storage/
   docker-compose.yml
   go.mod
+  README.md
 ```
 
 ## Configuration
@@ -117,7 +135,7 @@ Start the local environment:
 
 ```bash
 docker compose up -d
-
+```
 
 Health check:
 
@@ -126,6 +144,12 @@ curl http://localhost:8080/healthz
 ```
 
 ## API
+
+Protected routes require:
+
+```http
+Authorization: Bearer <token>
+```
 
 ### Health
 
@@ -148,13 +172,62 @@ POST /projects
 GET /projects
 GET /projects/{id}
 DELETE /projects/{id}
+GET /projects/{id}/activity
 ```
 
-Protected routes require:
+### Tasks
 
 ```http
-Authorization: Bearer <token>
+POST /projects/{projectID}/tasks
+GET /projects/{projectID}/tasks
+PUT /tasks/{id}
+PATCH /tasks/{id}/status
+DELETE /tasks/{id}
 ```
+
+Task list query parameters:
+
+```http
+GET /projects/{projectID}/tasks?status=todo&sort=created_at_desc
+```
+
+Supported status values:
+
+```text
+todo
+in_progress
+done
+```
+
+Supported sort values:
+
+```text
+created_at_desc
+created_at_asc
+updated_at_desc
+updated_at_asc
+```
+
+### Comments
+
+```http
+POST /tasks/{id}/comments
+GET /tasks/{id}/comments
+PUT /comments/{id}
+DELETE /comments/{id}
+```
+
+## Data Model
+
+Fluxera currently stores:
+
+- users
+- projects
+- tasks
+- comments
+- activity logs
+
+Activity logs use a JSONB payload to store event-specific details while keeping a consistent event schema.
 
 ## License
 
