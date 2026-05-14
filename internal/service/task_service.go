@@ -12,22 +12,26 @@ import (
 type TaskService struct {
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
-	activity ActivityLogger
+	events   EventPublisher
 }
 type TaskFilter struct {
 	Status string
 	Sort   string
 }
 
-type ActivityLogger interface {
-	Create(ctx context.Context, projectID, userID int64, eventType string, payload json.RawMessage) (*models.ActivityLog, error)
+type EventPublisher interface {
+	Publish(ctx context.Context, event models.Event) error
 }
 
-func NewTaskService(tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, activity ActivityLogger) *TaskService {
+func NewTaskService(
+	tasks *repositories.TaskRepository,
+	projects *repositories.ProjectRepository,
+	events EventPublisher,
+) *TaskService {
 	return &TaskService{
 		tasks:    tasks,
 		projects: projects,
-		activity: activity,
+		events:   events,
 	}
 }
 
@@ -122,7 +126,13 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 		return nil, err
 	}
 
-	_, err = s.activity.Create(ctx, projectID, ownerID, "task.created", payload)
+	err = s.events.Publish(ctx, models.Event{
+		ProjectID: projectID,
+		UserID:    ownerID,
+		Type:      "task.created",
+		Payload:   payload,
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +187,13 @@ func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, s
 		return nil, err
 	}
 
-	_, err = s.activity.Create(ctx, existingTask.ProjectID, ownerID, "task.status_changed", payload)
+	err = s.events.Publish(ctx, models.Event{
+		ProjectID: existingTask.ProjectID,
+		UserID:    ownerID,
+		Type:      "task.status_changed",
+		Payload:   payload,
+	})
+
 	if err != nil {
 		return nil, err
 	}

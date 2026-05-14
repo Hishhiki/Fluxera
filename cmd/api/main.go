@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fluxera/internal/config"
+	"fluxera/internal/events"
 	"fluxera/internal/handlers"
 	"fluxera/internal/middleware"
 	"fluxera/internal/repositories"
@@ -31,6 +33,8 @@ func main() {
 	}
 	defer store.Close()
 
+	dispatcher := events.NewDispatcher(100)
+
 	userRepo := repositories.NewUserRepository(store.DB())
 
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
@@ -45,14 +49,16 @@ func main() {
 
 	activityRepo := repositories.NewActivityLogRepository(store.DB())
 	activityService := service.NewActivityLogService(activityRepo, projectRepo)
+	eventActivityHandler := events.NewActivityHandler(activityService)
+	dispatcher.Start(context.Background(), eventActivityHandler)
 	activityHandler := handlers.NewActivityLogHandler(activityService)
 
 	taskRepo := repositories.NewTaskRepository(store.DB())
-	taskService := service.NewTaskService(taskRepo, projectRepo, activityService)
+	taskService := service.NewTaskService(taskRepo, projectRepo, dispatcher)
 	taskHandler := handlers.NewTaskHandler(taskService)
 
 	commentRepo := repositories.NewCommentRepository(store.DB())
-	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo, activityService)
+	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo, dispatcher)
 	commentHandler := handlers.NewCommentHandler(commentService)
 
 	r := chi.NewRouter()

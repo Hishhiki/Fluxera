@@ -13,14 +13,14 @@ type CommentService struct {
 	comments *repositories.CommentRepository
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
-	activity ActivityLogger
+	events   EventPublisher
 }
 
-func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, activity ActivityLogger) *CommentService {
+func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, events EventPublisher) *CommentService {
 	return &CommentService{comments: comments,
 		tasks:    tasks,
 		projects: projects,
-		activity: activity}
+		events:   events}
 }
 
 func (s *CommentService) Create(ctx context.Context, taskID, userID int64, content string) (*models.Comment, error) {
@@ -54,7 +54,12 @@ func (s *CommentService) Create(ctx context.Context, taskID, userID int64, conte
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.activity.Create(ctx, task.ProjectID, userID, "comment.created", payload)
+	err = s.events.Publish(ctx, models.Event{
+		ProjectID: task.ProjectID,
+		UserID:    userID,
+		Type:      "comment.created",
+		Payload:   payload,
+	})
 	if err != nil {
 		return nil, err
 	}
