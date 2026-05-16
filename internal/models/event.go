@@ -6,18 +6,18 @@ import (
 )
 
 const (
+	EventProjectCreated    = "project.created"
 	EventTaskCreated       = "task.created"
+	EventTaskUpdated       = "task.updated"
 	EventTaskStatusChanged = "task.status_changed"
 	EventCommentCreated    = "comment.created"
-	EventTaskUpdated       = "task.updated"
-	EventProjectCreated    = "project.created"
 )
 
 type Event struct {
 	ID        string          `json:"id"`
+	Type      string          `json:"type"`
 	ProjectID int64           `json:"project_id"`
 	UserID    int64           `json:"user_id"`
-	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"created_at"`
 }

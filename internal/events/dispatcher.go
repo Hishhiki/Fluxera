@@ -4,6 +4,9 @@ import (
 	"context"
 	"fluxera/internal/models"
 	"log"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type Dispatcher struct {
@@ -20,6 +23,13 @@ func NewDispatcher(buffer int) *Dispatcher {
 }
 
 func (d *Dispatcher) Publish(ctx context.Context, event models.Event) error {
+	if event.ID == "" {
+		event.ID = uuid.NewString()
+	}
+
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
 	select {
 	case d.events <- event:
 		return nil
