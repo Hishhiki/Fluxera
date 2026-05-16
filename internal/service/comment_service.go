@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fluxera/internal/events"
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"strings"
@@ -13,10 +13,10 @@ type CommentService struct {
 	comments *repositories.CommentRepository
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
-	events   EventPublisher
+	events   events.Publisher
 }
 
-func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, events EventPublisher) *CommentService {
+func NewCommentService(comments *repositories.CommentRepository, tasks *repositories.TaskRepository, projects *repositories.ProjectRepository, events events.Publisher) *CommentService {
 	return &CommentService{comments: comments,
 		tasks:    tasks,
 		projects: projects,
@@ -46,18 +46,14 @@ func (s *CommentService) Create(ctx context.Context, taskID, userID int64, conte
 	if err != nil {
 		return nil, err
 	}
-
-	payload, err := json.Marshal(map[string]any{
-		"comment_id": createdComment.ID,
-		"task_id":    createdComment.TaskID,
-	})
+	payload, err := events.NewCommentCreatedPayload(createdComment.ID, createdComment.TaskID)
 	if err != nil {
 		return nil, err
 	}
 	err = s.events.Publish(ctx, models.Event{
 		ProjectID: task.ProjectID,
 		UserID:    userID,
-		Type:      "comment.created",
+		Type:      models.EventCommentCreated,
 		Payload:   payload,
 	})
 	if err != nil {

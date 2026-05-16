@@ -2,15 +2,19 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"fluxera/internal/models"
-	"fluxera/internal/service"
 )
 
-type ActivityHandler struct {
-	activity *service.ActivityLogService
+type ActivityCreator interface {
+	Create(ctx context.Context, projectID, userID int64, eventType string, payload json.RawMessage) (*models.ActivityLog, error)
 }
 
-func NewActivityHandler(activity *service.ActivityLogService) *ActivityHandler {
+type ActivityHandler struct {
+	activity ActivityCreator
+}
+
+func NewActivityHandler(activity ActivityCreator) *ActivityHandler {
 	return &ActivityHandler{activity: activity}
 }
 

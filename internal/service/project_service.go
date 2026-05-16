@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fluxera/internal/events"
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"strings"
@@ -10,10 +11,11 @@ import (
 
 type ProjectService struct {
 	projects *repositories.ProjectRepository
+	events   events.Publisher
 }
 
-func NewProjectService(projects *repositories.ProjectRepository) *ProjectService {
-	return &ProjectService{projects: projects}
+func NewProjectService(projects *repositories.ProjectRepository, events events.Publisher) *ProjectService {
+	return &ProjectService{projects: projects, events: events}
 }
 
 func (s *ProjectService) Create(ctx context.Context, ownerID int64, name, description string) (*models.Project, error) {
@@ -28,6 +30,26 @@ func (s *ProjectService) Create(ctx context.Context, ownerID int64, name, descri
 		Description: description,
 	}
 	createdProject, err := s.projects.CreateProject(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := events.NewProjectCreatedPayload(
+		createdProject.ID,
+		createdProject.OwnerID,
+		createdProject.Name,
+		createdProject.Description,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.events.Publish(ctx, models.Event{
+		ProjectID: createdProject.ID,
+		UserID:    createdProject.OwnerID,
+		Type:      models.EventProjectCreated,
+		Payload:   payload,
+	})
 	if err != nil {
 		return nil, err
 	}

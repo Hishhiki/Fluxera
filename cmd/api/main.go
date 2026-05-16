@@ -44,7 +44,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 
 	projectRepo := repositories.NewProjectRepository(store.DB())
-	projectService := service.NewProjectService(projectRepo)
+	projectService := service.NewProjectService(projectRepo, dispatcher)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
 	activityRepo := repositories.NewActivityLogRepository(store.DB())

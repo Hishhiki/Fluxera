@@ -9,7 +9,6 @@ import (
 type Dispatcher struct {
 	events chan models.Event
 }
-
 type Handler interface {
 	Handle(ctx context.Context, event models.Event) error
 }

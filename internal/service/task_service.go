@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fluxera/internal/events"
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"strings"
@@ -12,21 +12,17 @@ import (
 type TaskService struct {
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
-	events   EventPublisher
+	events   events.Publisher
 }
 type TaskFilter struct {
 	Status string
 	Sort   string
 }
 
-type EventPublisher interface {
-	Publish(ctx context.Context, event models.Event) error
-}
-
 func NewTaskService(
 	tasks *repositories.TaskRepository,
 	projects *repositories.ProjectRepository,
-	events EventPublisher,
+	events events.Publisher,
 ) *TaskService {
 	return &TaskService{
 		tasks:    tasks,
@@ -118,10 +114,7 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 		return nil, err
 	}
 
-	payload, err := json.Marshal(map[string]any{
-		"task_id": createdTask.ID,
-		"title":   createdTask.Title,
-	})
+	payload, err := events.NewTaskCreatedPayload(createdTask.ID, createdTask.Title)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +122,7 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 	err = s.events.Publish(ctx, models.Event{
 		ProjectID: projectID,
 		UserID:    ownerID,
-		Type:      "task.created",
+		Type:      models.EventTaskCreated,
 		Payload:   payload,
 	})
 
@@ -178,11 +171,7 @@ func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, s
 		return nil, err
 	}
 
-	payload, err := json.Marshal(map[string]any{
-		"task_id":    updatedTask.ID,
-		"old_status": existingTask.Status,
-		"new_status": updatedTask.Status,
-	})
+	payload, err := events.NewTaskStatusChangedPayload(updatedTask.ID, existingTask.Status, updatedTask.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +179,7 @@ func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, s
 	err = s.events.Publish(ctx, models.Event{
 		ProjectID: existingTask.ProjectID,
 		UserID:    ownerID,
-		Type:      "task.status_changed",
+		Type:      models.EventTaskStatusChanged,
 		Payload:   payload,
 	})
 
@@ -251,7 +240,31 @@ func (s *TaskService) Update(ctx context.Context, ownerID, taskID int64, title, 
 		Status:      status,
 		Priority:    priority,
 	}
+	updatedTask, err := s.tasks.UpdateTask(ctx, task)
+	if err != nil {
+		return nil, err
+	}
 
-	return s.tasks.UpdateTask(ctx, task)
+	payload, err := events.NewTaskUpdatedPayload(
+		updatedTask.ID,
+		updatedTask.Title,
+		updatedTask.Status,
+		updatedTask.Priority,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.events.Publish(ctx, models.Event{
+		ProjectID: existingTask.ProjectID,
+		UserID:    ownerID,
+		Type:      models.EventTaskUpdated,
+		Payload:   payload,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedTask, nil
 
 }
