@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fluxera/internal/cache"
 	"fluxera/internal/config"
 	"fluxera/internal/events"
 	"fluxera/internal/handlers"
@@ -45,6 +46,12 @@ func main() {
 	kafkaPublisher := events.NewKafkaPublisher(strings.Split(cfg.KafkaBrokers, ","))
 	defer kafkaPublisher.Close()
 
+	redisCache, err := cache.NewRedisCache(appCtx, cfg.RedisAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer redisCache.Close()
+
 	userRepo := repositories.NewUserRepository(store.DB())
 
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
@@ -54,11 +61,11 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 
 	projectRepo := repositories.NewProjectRepository(store.DB())
-	projectService := service.NewProjectService(projectRepo, kafkaPublisher)
+	projectService := service.NewProjectService(projectRepo, kafkaPublisher, redisCache)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
 	activityRepo := repositories.NewActivityLogRepository(store.DB())
-	activityService := service.NewActivityLogService(activityRepo, projectRepo)
+	activityService := service.NewActivityLogService(activityRepo, projectRepo, redisCache)
 	activityHandler := handlers.NewActivityLogHandler(activityService)
 
 	eventActivityHandler := events.NewActivityHandler(activityService)
@@ -69,29 +76,23 @@ func main() {
 		models.EventTaskStatusChanged,
 		models.EventCommentCreated,
 	}
-	activityConsumers := make([]*events.KafkaConsumer, 0, len(activityTopics))
 
-	for _, topic := range activityTopics {
-		consumer := events.NewKafkaConsumer(
-			strings.Split(cfg.KafkaBrokers, ","),
-			topic,
-			"fluxera-activity",
-			eventActivityHandler,
-		)
-		consumer.Start(appCtx)
-		activityConsumers = append(activityConsumers, consumer)
-	}
+	activityConsumer := events.NewKafkaConsumer(
+		strings.Split(cfg.KafkaBrokers, ","),
+		activityTopics,
+		"fluxera-activity",
+		eventActivityHandler,
+	)
+	activityConsumer.Start(appCtx)
 
 	defer func() {
-		for _, consumer := range activityConsumers {
-			if err := consumer.Close(); err != nil {
-				log.Printf("failed to close kafka consumer: %v", err)
-			}
+		if err := activityConsumer.Close(); err != nil {
+			log.Printf("failed to close kafka consumer: %v", err)
 		}
 	}()
 
 	taskRepo := repositories.NewTaskRepository(store.DB())
-	taskService := service.NewTaskService(taskRepo, projectRepo, kafkaPublisher)
+	taskService := service.NewTaskService(taskRepo, projectRepo, kafkaPublisher, redisCache)
 	taskHandler := handlers.NewTaskHandler(taskService)
 
 	commentRepo := repositories.NewCommentRepository(store.DB())

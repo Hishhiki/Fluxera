@@ -15,12 +15,12 @@ type KafkaConsumer struct {
 	handler Handler
 }
 
-func NewKafkaConsumer(brokers []string, topic string, groupID string, handler Handler) *KafkaConsumer {
+func NewKafkaConsumer(brokers []string, topics []string, groupID string, handler Handler) *KafkaConsumer {
 	return &KafkaConsumer{
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers: brokers,
-			Topic:   topic,
-			GroupID: groupID,
+			Brokers:     brokers,
+			GroupTopics: topics,
+			GroupID:     groupID,
 		}),
 		handler: handler,
 	}

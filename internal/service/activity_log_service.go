@@ -7,15 +7,23 @@ import (
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"strings"
+	"time"
 )
+
+type ActivityCache interface {
+	GetActivityFeed(ctx context.Context, projectID int64) ([]*models.ActivityLog, bool, error)
+	SetActivityFeed(ctx context.Context, projectID int64, logs []*models.ActivityLog, ttl time.Duration) error
+	DeleteActivityFeed(ctx context.Context, projectID int64) error
+}
 
 type ActivityLogService struct {
 	logs     *repositories.ActivityLogRepository
 	projects *repositories.ProjectRepository
+	cache    ActivityCache
 }
 
-func NewActivityLogService(logs *repositories.ActivityLogRepository, projects *repositories.ProjectRepository) *ActivityLogService {
-	return &ActivityLogService{logs: logs, projects: projects}
+func NewActivityLogService(logs *repositories.ActivityLogRepository, projects *repositories.ProjectRepository, cache ActivityCache) *ActivityLogService {
+	return &ActivityLogService{logs: logs, projects: projects, cache: cache}
 }
 
 func (s *ActivityLogService) Create(ctx context.Context, projectID, userID int64, eventType string, payload json.RawMessage) (*models.ActivityLog, error) {
@@ -46,7 +54,16 @@ func (s *ActivityLogService) Create(ctx context.Context, projectID, userID int64
 		Payload:   payload,
 	}
 
-	return s.logs.CreateActivityLog(ctx, log)
+	createdLog, err := s.logs.CreateActivityLog(ctx, log)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.cache.DeleteActivityFeed(ctx, projectID); err != nil {
+		return nil, err
+	}
+
+	return createdLog, nil
 }
 
 func (s *ActivityLogService) GetByProject(ctx context.Context, projectID, userID int64) ([]*models.ActivityLog, error) {
@@ -55,5 +72,20 @@ func (s *ActivityLogService) GetByProject(ctx context.Context, projectID, userID
 		return nil, err
 	}
 
-	return s.logs.GetActivityByProjectID(ctx, projectID)
+	if logs, found, err := s.cache.GetActivityFeed(ctx, projectID); err != nil {
+		return nil, err
+	} else if found {
+		return logs, nil
+	}
+
+	logs, err := s.logs.GetActivityByProjectID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.cache.SetActivityFeed(ctx, projectID, logs, 5*time.Minute); err != nil {
+		return nil, err
+	}
+
+	return logs, nil
 }

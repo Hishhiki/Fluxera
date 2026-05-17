@@ -7,12 +7,20 @@ import (
 	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"strings"
+	"time"
 )
+
+type TaskCache interface {
+	GetProjectTasks(ctx context.Context, projectID int64, status, sort string) ([]*models.Task, bool, error)
+	SetProjectTasks(ctx context.Context, projectID int64, status, sort string, tasks []*models.Task, ttl time.Duration) error
+	DeleteProjectTasks(ctx context.Context, projectID int64) error
+}
 
 type TaskService struct {
 	tasks    *repositories.TaskRepository
 	projects *repositories.ProjectRepository
 	events   events.Publisher
+	cache    TaskCache
 }
 type TaskFilter struct {
 	Status string
@@ -23,11 +31,13 @@ func NewTaskService(
 	tasks *repositories.TaskRepository,
 	projects *repositories.ProjectRepository,
 	events events.Publisher,
+	cache TaskCache,
 ) *TaskService {
 	return &TaskService{
 		tasks:    tasks,
 		projects: projects,
 		events:   events,
+		cache:    cache,
 	}
 }
 
@@ -113,6 +123,9 @@ func (s *TaskService) Create(ctx context.Context, ownerID, projectID int64, titl
 	if err != nil {
 		return nil, err
 	}
+	if err := s.cache.DeleteProjectTasks(ctx, projectID); err != nil {
+		return nil, err
+	}
 
 	payload, err := events.NewTaskCreatedPayload(createdTask.ID, createdTask.Title)
 	if err != nil {
@@ -153,7 +166,22 @@ func (s *TaskService) GetByProject(ctx context.Context, ownerID, projectID int64
 		return nil, errors.New("invalid task sort")
 	}
 
-	return s.tasks.GetTasksByProjectID(ctx, projectID, filter.Status, filter.Sort)
+	if tasks, found, err := s.cache.GetProjectTasks(ctx, projectID, filter.Status, filter.Sort); err != nil {
+		return nil, err
+	} else if found {
+		return tasks, nil
+	}
+
+	tasks, err := s.tasks.GetTasksByProjectID(ctx, projectID, filter.Status, filter.Sort)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.cache.SetProjectTasks(ctx, projectID, filter.Status, filter.Sort, tasks, 5*time.Minute); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
 }
 
 func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, status string) (*models.Task, error) {
@@ -168,6 +196,9 @@ func (s *TaskService) UpdateStatus(ctx context.Context, ownerID, taskID int64, s
 
 	updatedTask, err := s.tasks.UpdateTaskStatus(ctx, taskID, status)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.cache.DeleteProjectTasks(ctx, existingTask.ProjectID); err != nil {
 		return nil, err
 	}
 
@@ -197,7 +228,11 @@ func (s *TaskService) Delete(ctx context.Context, ownerID, taskID int64) error {
 		return err
 	}
 
-	return s.tasks.DeleteTask(ctx, taskID, task.ProjectID)
+	if err := s.tasks.DeleteTask(ctx, taskID, task.ProjectID); err != nil {
+		return err
+	}
+
+	return s.cache.DeleteProjectTasks(ctx, task.ProjectID)
 }
 
 func (s *TaskService) Update(ctx context.Context, ownerID, taskID int64, title, description, status, priority string) (*models.Task, error) {
@@ -242,6 +277,9 @@ func (s *TaskService) Update(ctx context.Context, ownerID, taskID int64, title, 
 	}
 	updatedTask, err := s.tasks.UpdateTask(ctx, task)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.cache.DeleteProjectTasks(ctx, existingTask.ProjectID); err != nil {
 		return nil, err
 	}
 

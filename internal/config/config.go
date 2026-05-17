@@ -13,6 +13,7 @@ type Config struct {
 	DatabaseURL  string
 	JWTSecret    string
 	KafkaBrokers string
+	RedisAddr    string
 }
 
 func Load() Config {
@@ -30,11 +31,17 @@ func Load() Config {
 		kafkaBrokers = "localhost:9092"
 	}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	return Config{
 		HTTPAddr:     addr,
 		DatabaseURL:  os.Getenv("DATABASE_URL"),
 		JWTSecret:    os.Getenv("JWT_SECRET"),
 		KafkaBrokers: kafkaBrokers,
+		RedisAddr:    redisAddr,
 	}
 
 }
