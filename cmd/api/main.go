@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fluxera/internal/config"
 	"fluxera/internal/events"
 	"fluxera/internal/handlers"
 	"fluxera/internal/middleware"
+	"fluxera/internal/models"
 	"fluxera/internal/repositories"
 	"fluxera/internal/service"
 	"fluxera/internal/storage"
@@ -51,6 +53,35 @@ func main() {
 	activityRepo := repositories.NewActivityLogRepository(store.DB())
 	activityService := service.NewActivityLogService(activityRepo, projectRepo)
 	activityHandler := handlers.NewActivityLogHandler(activityService)
+
+	eventActivityHandler := events.NewActivityHandler(activityService)
+	activityTopics := []string{
+		models.EventProjectCreated,
+		models.EventTaskCreated,
+		models.EventTaskUpdated,
+		models.EventTaskStatusChanged,
+		models.EventCommentCreated,
+	}
+	activityConsumers := make([]*events.KafkaConsumer, 0, len(activityTopics))
+
+	for _, topic := range activityTopics {
+		consumer := events.NewKafkaConsumer(
+			strings.Split(cfg.KafkaBrokers, ","),
+			topic,
+			"fluxera-activity",
+			eventActivityHandler,
+		)
+		consumer.Start(context.Background())
+		activityConsumers = append(activityConsumers, consumer)
+	}
+
+	defer func() {
+		for _, consumer := range activityConsumers {
+			if err := consumer.Close(); err != nil {
+				log.Printf("failed to close kafka consumer: %v", err)
+			}
+		}
+	}()
 
 	taskRepo := repositories.NewTaskRepository(store.DB())
 	taskService := service.NewTaskService(taskRepo, projectRepo, kafkaPublisher)
