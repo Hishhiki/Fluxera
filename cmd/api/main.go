@@ -12,7 +12,11 @@ import (
 	"fluxera/internal/storage"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -20,6 +24,9 @@ import (
 )
 
 func main() {
+	appCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg := config.Load()
 
 	if cfg.DatabaseURL == "" {
@@ -71,7 +78,7 @@ func main() {
 			"fluxera-activity",
 			eventActivityHandler,
 		)
-		consumer.Start(context.Background())
+		consumer.Start(appCtx)
 		activityConsumers = append(activityConsumers, consumer)
 	}
 
@@ -133,6 +140,27 @@ func main() {
 		r.Delete("/comments/{id}", commentHandler.DeleteComment)
 		r.Get("/projects/{id}/activity", activityHandler.GetProjectActivity)
 	})
-	log.Printf("server started on %s", cfg.HTTPAddr)
-	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, r))
+	server := &http.Server{
+		Addr:    cfg.HTTPAddr,
+		Handler: r,
+	}
+
+	go func() {
+		log.Printf("server started on %s", cfg.HTTPAddr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("failed to start server: %v", err)
+		}
+	}()
+
+	<-appCtx.Done()
+	log.Println("shutting down server")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("failed to shutdown server: %v", err)
+	}
+
+	log.Println("server stopped")
 }
