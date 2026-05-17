@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fluxera/internal/config"
 	"fluxera/internal/events"
 	"fluxera/internal/handlers"
@@ -11,6 +10,7 @@ import (
 	"fluxera/internal/storage"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -33,7 +33,8 @@ func main() {
 	}
 	defer store.Close()
 
-	dispatcher := events.NewDispatcher(100)
+	kafkaPublisher := events.NewKafkaPublisher(strings.Split(cfg.KafkaBrokers, ","))
+	defer kafkaPublisher.Close()
 
 	userRepo := repositories.NewUserRepository(store.DB())
 
@@ -44,21 +45,19 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 
 	projectRepo := repositories.NewProjectRepository(store.DB())
-	projectService := service.NewProjectService(projectRepo, dispatcher)
+	projectService := service.NewProjectService(projectRepo, kafkaPublisher)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
 	activityRepo := repositories.NewActivityLogRepository(store.DB())
 	activityService := service.NewActivityLogService(activityRepo, projectRepo)
-	eventActivityHandler := events.NewActivityHandler(activityService)
-	dispatcher.Start(context.Background(), eventActivityHandler)
 	activityHandler := handlers.NewActivityLogHandler(activityService)
 
 	taskRepo := repositories.NewTaskRepository(store.DB())
-	taskService := service.NewTaskService(taskRepo, projectRepo, dispatcher)
+	taskService := service.NewTaskService(taskRepo, projectRepo, kafkaPublisher)
 	taskHandler := handlers.NewTaskHandler(taskService)
 
 	commentRepo := repositories.NewCommentRepository(store.DB())
-	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo, dispatcher)
+	commentService := service.NewCommentService(commentRepo, taskRepo, projectRepo, kafkaPublisher)
 	commentHandler := handlers.NewCommentHandler(commentService)
 
 	r := chi.NewRouter()

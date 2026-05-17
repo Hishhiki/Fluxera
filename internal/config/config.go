@@ -9,9 +9,10 @@ import (
 )
 
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
-	JWTSecret   string
+	HTTPAddr     string
+	DatabaseURL  string
+	JWTSecret    string
+	KafkaBrokers string
 }
 
 func Load() Config {
@@ -24,10 +25,16 @@ func Load() Config {
 		addr = ":8080"
 	}
 
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "localhost:9092"
+	}
+
 	return Config{
-		HTTPAddr:    addr,
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
+		HTTPAddr:     addr,
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
+		KafkaBrokers: kafkaBrokers,
 	}
 
 }
