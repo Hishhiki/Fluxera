@@ -1,30 +1,29 @@
 # Fluxera
 
-Fluxera is a project management backend for organizing projects, tasks, comments, and project activity in one workspace.
+Fluxera is an event-driven project management backend for organizing projects, tasks, comments, and activity history inside a focused workspace.
 
-It provides a focused API for teams and products that need user authentication, owner-scoped projects, task workflows, task discussions, and an activity feed that tracks important changes across a project.
+It combines a clean HTTP API with owner-scoped access control, JWT authentication, PostgreSQL persistence, and Kafka-based event processing for project activity.
 
-## Overview
+```text
+Projects. Tasks. Comments. Activity.
+One backend flow built around explicit events.
+```
 
-Fluxera is built around a simple workflow:
+## What Fluxera Does
 
-- users register and sign in;
-- authenticated users create projects;
-- projects contain tasks with statuses and priorities;
-- tasks support comments;
-- important project events are recorded in an activity feed.
+Fluxera gives authenticated users a workspace where they can create projects, manage task workflows, discuss work through comments, and track meaningful changes through an activity feed.
 
-The backend keeps a clear separation between request handling, business logic, database access, authentication, and infrastructure setup.
+The activity feed is not written as a side effect hidden inside handlers. Domain services publish events, Kafka transports them, and consumers persist activity logs. This keeps the request flow, event flow, and persistence logic separated.
 
-## Features
+## Core Capabilities
 
 ### Authentication
 
 - User registration
 - User login
 - Password hashing with bcrypt
-- JWT-based authentication
-- Protected routes
+- JWT token generation
+- JWT middleware for protected routes
 - Current user endpoint
 
 ### Projects
@@ -33,12 +32,12 @@ The backend keeps a clear separation between request handling, business logic, d
 - List projects owned by the current user
 - Get project details
 - Delete projects
-- Owner-based access checks
+- Enforce owner-based access checks
 
 ### Tasks
 
 - Create tasks inside projects
-- List project tasks
+- List tasks by project
 - Filter tasks by status
 - Sort tasks by creation or update time
 - Update task details
@@ -48,52 +47,111 @@ The backend keeps a clear separation between request handling, business logic, d
 ### Comments
 
 - Add comments to tasks
-- List task comments
+- Read task comments
 - Update own comments
 - Delete own comments
-- Project owners can remove comments in their projects
+- Allow project owners to remove comments in their projects
 
 ### Activity Feed
 
-- Store project activity events
+- Store project activity logs
+- Track project creation
 - Track task creation
+- Track task updates
 - Track task status changes
 - Track comment creation
-- Read project activity feed
-
-## Tech Stack
-
-- Go
-- chi
-- PostgreSQL
-- JWT
-- bcrypt
-- Docker
-- docker-compose
-
-Planned infrastructure additions:
-
-- Kafka
-- Redis
-- Next.js frontend
+- Read activity by project
 
 ## Architecture
 
-Fluxera follows a layered backend structure:
+Fluxera uses a layered backend structure with a separate event pipeline.
 
 ```text
-HTTP request
-  -> handler
-  -> service
-  -> repository
-  -> PostgreSQL
+HTTP Request
+    |
+    v
+Handler
+    |
+    v
+Service
+    |
+    +--------------------+
+    |                    |
+    v                    v
+Repository          Event Publisher
+    |                    |
+    v                    v
+PostgreSQL            Kafka
+                         |
+                         v
+                  Kafka Consumer
+                         |
+                         v
+                 Activity Service
+                         |
+                         v
+                 activity_logs
 ```
 
-Handlers decode requests and write responses. Services contain business rules, validation, access checks, and activity logging. Repositories isolate SQL and database access.
+Handlers are responsible for HTTP input and output.
 
-Authentication is handled through JWT middleware. Protected handlers receive the current user id from the request context.
+Services contain validation, business rules, ownership checks, and event publishing.
 
-Project access is owner-scoped. Tasks, comments, and activity feed access are checked through the project that owns the resource.
+Repositories isolate SQL and database access.
+
+Kafka publishers and consumers move domain events between the application flow and asynchronous activity processing.
+
+## Event Flow
+
+Fluxera represents important domain changes as events:
+
+```text
+project.created
+task.created
+task.updated
+task.status_changed
+comment.created
+```
+
+Each event has a stable envelope:
+
+```json
+{
+  "id": "bab3808b-e163-4b9a-bb8e-f4b4bd87d93b",
+  "type": "task.created",
+  "project_id": 10,
+  "user_id": 41,
+  "payload": {
+    "task_id": 7,
+    "title": "Check Kafka activity flow"
+  },
+  "created_at": "2026-05-17T13:23:24Z"
+}
+```
+
+The service layer publishes events through a small interface:
+
+```go
+type Publisher interface {
+	Publish(ctx context.Context, event models.Event) error
+}
+```
+
+That keeps services independent from Kafka-specific code. Kafka is an implementation detail behind the publisher interface.
+
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| Language | Go |
+| Router | chi |
+| Authentication | JWT, bcrypt |
+| Database | PostgreSQL |
+| Events | Kafka |
+| Event UI | Kafka UI |
+| Containers | Docker, Docker Compose |
+| Cache | Redis planned |
+| Frontend | Next.js planned |
 
 ## Project Structure
 
@@ -103,15 +161,16 @@ fluxera/
     api/
       main.go
   internal/
-    auth/
-    config/
-    db/
-    handlers/
-    middleware/
-    models/
-    repositories/
-    service/
-    storage/
+    auth/             JWT helpers
+    config/           Environment configuration
+    db/               SQL schema files
+    events/           Event model helpers, Kafka publisher, Kafka consumer
+    handlers/         HTTP handlers
+    middleware/       Auth middleware
+    models/           Domain models
+    repositories/     PostgreSQL repositories
+    service/          Business logic
+    storage/          Database connection setup
   docker-compose.yml
   go.mod
   README.md
@@ -127,23 +186,47 @@ Example `.env`:
 HTTP_ADDR=:8080
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/fluxera?sslmode=disable
 JWT_SECRET=change-me
+KAFKA_BROKERS=localhost:9092
 ```
 
-## Running Locally
+## Infrastructure
 
-Start the local environment:
+Docker Compose provides the local backing services:
+
+- PostgreSQL
+- Kafka
+- Kafka UI
+
+Start infrastructure:
 
 ```bash
 docker compose up -d
 ```
 
-Health check:
+Kafka UI:
 
-```bash
-curl http://localhost:8080/healthz
+```text
+http://localhost:8081
 ```
 
-## API
+Required Kafka topics:
+
+```text
+project.created
+task.created
+task.updated
+task.status_changed
+comment.created
+```
+
+Each topic can be created with:
+
+```text
+Partitions: 3
+Replication factor: 1
+```
+
+## API Overview
 
 Protected routes require:
 
@@ -191,7 +274,7 @@ Task list query parameters:
 GET /projects/{projectID}/tasks?status=todo&sort=created_at_desc
 ```
 
-Supported status values:
+Supported statuses:
 
 ```text
 todo
@@ -219,15 +302,40 @@ DELETE /comments/{id}
 
 ## Data Model
 
-Fluxera currently stores:
+Fluxera stores the core workspace data in PostgreSQL:
 
-- users
-- projects
-- tasks
-- comments
-- activity logs
+| Table | Purpose |
+|---|---|
+| `users` | Accounts and password hashes |
+| `projects` | Owner-scoped project containers |
+| `tasks` | Work items inside projects |
+| `comments` | Task discussion messages |
+| `activity_logs` | Event-backed activity feed |
 
-Activity logs use a JSONB payload to store event-specific details while keeping a consistent event schema.
+Activity logs use `JSONB` payloads so each event can keep event-specific details while sharing one consistent activity table.
+
+## Reliability
+
+Fluxera includes:
+
+- request logging middleware
+- panic recovery middleware
+- JWT-protected routes
+- ownership checks for project-scoped data
+- Kafka consumer retry on temporary fetch errors
+- graceful shutdown for HTTP server and Kafka consumers
+
+## Current Direction
+
+Fluxera is ready for the next infrastructure layer: Redis.
+
+Redis will be used for:
+
+- activity feed cache
+- project cache
+- task list cache
+- TTL-based cache expiration
+- cache invalidation after Kafka events
 
 ## License
 
