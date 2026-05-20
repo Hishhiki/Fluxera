@@ -120,8 +120,11 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimit(redisCache, "auth", 5, time.Minute))
+		r.Post("/auth/register", authHandler.Register)
+		r.Post("/auth/login", authHandler.Login)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWTSecret))

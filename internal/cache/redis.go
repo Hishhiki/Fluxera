@@ -156,3 +156,18 @@ func (c *RedisCache) DeleteProjectTasks(ctx context.Context, projectID int64) er
 
 	return c.client.Del(ctx, keys...).Err()
 }
+
+func (c *RedisCache) Increment(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	count, err := c.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	if count == 1 {
+		if err := c.client.Expire(ctx, key, ttl).Err(); err != nil {
+			return 0, err
+		}
+	}
+
+	return count, nil
+}
